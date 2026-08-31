@@ -97,6 +97,61 @@ def find_default_profile_directory() -> str | None:
             return path_str
             
     return None
+
+
+def get_arm64_chromedriver_path(chrome_version: str) -> str | None:
+    '''
+    On Apple Silicon Macs, `undetected_chromedriver` always downloads the Intel (mac-x64)
+    ChromeDriver build and relies on Rosetta to run it, which is unstable and can crash mid-run
+    against recent Chrome builds. Downloads and caches the native mac-arm64 build matching
+    `chrome_version` instead, returning its path. Returns `None` if not on Apple Silicon macOS,
+    or if the matching driver couldn't be fetched.
+    '''
+    import platform, zipfile, io, urllib.request
+
+    if sys.platform != 'darwin' or platform.machine() != 'arm64':
+        return None
+
+    build = ".".join(chrome_version.split(".")[:3])
+    cache_dir = pathlib.Path.home() / ".cache" / "auto_job_applier" / "chromedriver-arm64" / build
+    driver_path = str(cache_dir / "chromedriver")
+
+    if os.path.exists(driver_path):
+        return driver_path
+
+    try:
+        index_url = "https://googlechromelabs.github.io/chrome-for-testing/latest-patch-versions-per-build-with-downloads.json"
+        with urllib.request.urlopen(index_url, timeout=15) as response:
+            builds = json.load(response)["builds"]
+        build_info = builds.get(build)
+        if not build_info:
+            return None
+        download_url = next(d["url"] for d in build_info["downloads"]["chromedriver"] if d["platform"] == "mac-arm64")
+
+        with urllib.request.urlopen(download_url, timeout=60) as response:
+            archive_bytes = response.read()
+
+        os.makedirs(cache_dir, exist_ok=True)
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            member = next(name for name in archive.namelist() if name.endswith("/chromedriver"))
+            with archive.open(member) as source, open(driver_path, "wb") as destination:
+                destination.write(source.read())
+
+        os.chmod(driver_path, 0o755)
+        os.system(f'xattr -d com.apple.quarantine "{driver_path}" 2>/dev/null')
+
+        # `undetected_chromedriver`'s stealth patch rewrites bytes in the binary, which
+        # invalidates its ad-hoc code signature. On Apple Silicon, macOS's kernel-level code
+        # signing enforcement then SIGKILLs the (now unsigned) process on launch. Patch and
+        # re-sign it ourselves here so the cached binary is already valid; `uc.Chrome()` will
+        # see it's already patched (via `is_binary_patched`) and skip patching it again.
+        from undetected_chromedriver.patcher import Patcher
+        Patcher(executable_path=driver_path).patch_exe()
+        os.system(f'codesign --force --sign - "{driver_path}" 2>/dev/null')
+
+        return driver_path
+    except Exception:
+        return None
 #>
 
 

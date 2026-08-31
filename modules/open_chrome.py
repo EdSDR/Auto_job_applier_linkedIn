@@ -14,7 +14,9 @@ Support me: https://github.com/sponsors/GodsScion
 version:    26.01.20.5.08
 '''
 
-from modules.helpers import get_default_temp_profile, make_directories
+import sys, subprocess
+
+from modules.helpers import get_default_temp_profile, make_directories, get_arm64_chromedriver_path
 from config.settings import run_in_background, auto_manage_driver, disable_extensions, safe_mode, file_name, failed_file_name, logs_folder_path, generated_resume_path
 from config.questions import default_resume_path
 if auto_manage_driver:
@@ -45,14 +47,29 @@ def createChromeSession(isRetry: bool = False):
         print_lg("Logging in with a guest profile, Web history will not be saved!")
         options.add_argument(f"--user-data-dir={get_default_temp_profile()}")
     if auto_manage_driver:
-        # try: 
+        # try:
         #     driver = uc.Chrome(driver_executable_path="C:\\Program Files\\Google\\Chrome\\chromedriver-win64\\chromedriver.exe", options=options)
-        # except (FileNotFoundError, PermissionError) as e: 
+        # except (FileNotFoundError, PermissionError) as e:
         #     print_lg("(auto-managed driver) Got '{}' when using pre-installed ChromeDriver.".format(type(e).__name__))
             print_lg("Downloading the matching Chrome driver... This may take some time (this happens each run when auto_manage_driver is enabled).")
-            driver = uc.Chrome(options=options)
+            arm64_driver_path = None
+            if sys.platform == 'darwin':
+                try:
+                    chrome_version = subprocess.check_output(["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--version"]).decode().split()[2]
+                    arm64_driver_path = get_arm64_chromedriver_path(chrome_version)
+                except Exception:
+                    pass
+            driver = uc.Chrome(options=options, driver_executable_path=arm64_driver_path)
     else: driver = webdriver.Chrome(options=options) #, service=Service(executable_path="C:\\Program Files\\Google\\Chrome\\chromedriver-win64\\chromedriver.exe"))
     driver.maximize_window()
+
+    # LinkedIn picks its UI language by IP geolocation, ignoring browser language settings.
+    # This bot's element selectors are hardcoded English text (e.g. "Sign in", "All filters"),
+    # so they silently fail to match on any non-English LinkedIn locale. Force English via the
+    # `lang` cookie LinkedIn itself uses for locale selection, before any other navigation.
+    driver.get("https://www.linkedin.com")
+    driver.add_cookie({"name": "lang", "value": "v=2&lang=en-us", "domain": ".linkedin.com"})
+
     wait = WebDriverWait(driver, 5)
     actions = ActionChains(driver)
     return options, driver, actions, wait
