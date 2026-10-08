@@ -18,3 +18,6 @@ apikeys.py
 user_config.json
 .bot_run.log
 .bot_run.pid
+
+# macOS
+.DS_Store
