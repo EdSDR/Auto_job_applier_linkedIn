@@ -36,9 +36,11 @@ def wait_span_click(driver: WebDriver, text: str, time: float=5.0, click: bool=T
     '''
     if text:
         try:
-            button = WebDriverWait(driver,time).until(EC.presence_of_element_located((By.XPATH, './/span[normalize-space(.)="'+text+'"]')))
+            locator = (By.XPATH, './/span[normalize-space(.)="'+text+'"]')
+            button = WebDriverWait(driver,time).until(EC.presence_of_element_located(locator))
             if scroll:  scroll_to_view(driver, button, scrollTop)
             if click:
+                button = WebDriverWait(driver,time).until(EC.element_to_be_clickable(locator))
                 button.click()
                 buffer(click_gap)
             return button

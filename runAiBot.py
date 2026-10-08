@@ -223,7 +223,7 @@ def apply_filters() -> None:
         multi_sel_noWait(driver, on_site)
         if job_type or on_site: buffer(recommended_wait)
 
-        if easy_apply_only: boolean_button_click(driver, actions, "Easy Apply")
+        if easy_apply_only: boolean_button_click(driver, actions, "LinkedIn Apply")
         
         multi_sel_noWait(driver, location)
         multi_sel_noWait(driver, industry)
