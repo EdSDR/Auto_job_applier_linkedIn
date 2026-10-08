@@ -114,3 +114,57 @@ def test_non_interactive_retry_gives_up_at_the_deadline(monkeypatch):
     monkeypatch.setattr(helpers, "print_lg", lambda *a, **k: None)
 
     assert helpers.manual_login_retry(lambda: False, interactive=False, timeout_seconds=300) is False
+
+
+# ------------------------------- login in any language -------------------------------
+class FakeField(FakeInput):
+    def __init__(self):
+        super().__init__()
+        self.typed = []
+
+    def clear(self):
+        self.typed.clear()
+
+    def send_keys(self, *keys):
+        self.typed.extend(keys)
+
+
+class FakeLoginPage:
+    '''A Portuguese login page: no "Forgot password?" link and no "Sign in" button.'''
+
+    def __init__(self):
+        self.current_url = "https://www.linkedin.com/login"
+        self.email, self.password = FakeField(), FakeField()
+
+    def get(self, url):
+        pass
+
+    def find_elements(self, by, locator):
+        return {"input[type='email']": [self.email], "input[type='password']": [self.password]}.get(locator, [])
+
+    def find_element(self, by, locator):
+        from selenium.common.exceptions import NoSuchElementException
+        raise NoSuchElementException(locator)
+
+
+def test_login_submits_a_localised_login_page(bot, monkeypatch):
+    from selenium.webdriver.common.keys import Keys
+    page = FakeLoginPage()
+    monkeypatch.setattr(bot, "driver", page)
+    monkeypatch.setattr(bot, "username", "me@example.org")
+    monkeypatch.setattr(bot, "password", "pw")
+    monkeypatch.setattr(bot, "human_type", lambda field, text: field.send_keys(text))
+    monkeypatch.setattr(bot, "buffer", lambda *a: None)
+    monkeypatch.setattr(bot, "print_lg", lambda *a, **k: None)
+    monkeypatch.setattr(bot, "manual_login_retry", lambda *a, **k: True)
+
+    def land_on_feed(*keys):
+        page.password.typed.extend(keys)
+        if Keys.ENTER in keys: page.current_url = "https://www.linkedin.com/feed/"
+    page.password.send_keys = land_on_feed
+
+    bot.login_LN()
+
+    assert page.email.typed == ["me@example.org"]
+    assert page.password.typed == ["pw", Keys.ENTER]
+    assert bot.is_logged_in_LN()
