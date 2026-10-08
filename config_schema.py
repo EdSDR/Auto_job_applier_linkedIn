@@ -131,6 +131,8 @@ SCHEMA = [
                "The city you live in. If left blank, the tool fills in the job's location instead."),
             _f("Profile", "questions", "years_of_experience", "Years of experience", "text",
                "What to answer for 'how many years of experience do you have' questions. A number in text, e.g. 0, 1, 3, 5."),
+            _f("Profile", "questions", "skill_years", "Years per skill", "list",
+               "Answers 'how many years of experience with X?' questions. One per line as Skill: years, e.g. React: 5. Unlisted skills are left unanswered and the job is skipped."),
             _f("Profile", "questions", "require_visa", "Need visa sponsorship?", "select",
                "Do you need visa sponsorship now or in the future?",
                options=["Yes", "No"]),

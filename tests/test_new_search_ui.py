@@ -157,3 +157,27 @@ def test_resume_picker_keeps_linkedins_choice_when_no_file_matches(bot, monkeypa
     options = [FakeOption("cv-2026.pdf"), FakeOption("old.docx", checked=True)]
     assert bot.choose_resume(options) == "old.docx"
     assert not any(o.clicked for o in options)
+
+
+# ------------------------------------ years per skill ------------------------------------
+@pytest.mark.parametrize("label, expected", [
+    ("how many years of work experience do you have with react.js?", "5"),
+    ("how many years of experience do you have with reactjs?", "5"),
+    ("how many years of work experience do you have with javascript?", "4"),
+    ("how many years of experience with java?", None),          # "Java" is not "JavaScript"
+    ("how many years of experience do you have with node.js?", "3"),
+    ("how many years of experience with next.js and react?", "2"),   # longest listed name wins
+    ("how many years of kubernetes experience do you have?", None),
+])
+def test_years_for_skill(bot, monkeypatch, label, expected):
+    monkeypatch.setattr(bot, "skill_years", ["React: 5", "JavaScript: 4", "Node.js: 3", "Next.js: 2", "broken entry"])
+    assert bot.years_for_skill(label) == expected
+
+
+def test_skill_years_question_never_falls_back_to_the_total(bot, monkeypatch):
+    monkeypatch.setattr(bot, "skill_years", ["React: 5"])
+    monkeypatch.setattr(bot, "years_of_experience", "9")
+    label = "how many years of work experience do you have with kubernetes?"
+    assert bot.text_answer(label, label, "Remote") == ("", False)
+    label = "how many years of work experience do you have with react.js?"
+    assert bot.text_answer(label, label, "Remote") == ("5", False)

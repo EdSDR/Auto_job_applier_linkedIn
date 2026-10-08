@@ -26,6 +26,11 @@ default_resume_path = "all resumes/default/resume.pdf"      # (In Development)
 # What do you want to answer for questions that ask about years of experience you have, this is different from current_experience? 
 years_of_experience = "5"          # A number in quotes Eg: "0","1","2","3","4", etc.
 
+# Years per skill, for "How many years of experience do you have with React.js?". The total
+# above is never used for these: it would claim 5 years of anything a form asks about.
+# Only listed skills are answered; any other skill question is left for you and the job skipped.
+skill_years = []                   # e.g. ["React: 5", "JavaScript: 5", "Node.js: 3"]
+
 # Do you need visa sponsorship now or in future?
 require_visa = "No"               # "Yes" or "No"
 

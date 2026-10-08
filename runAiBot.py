@@ -139,6 +139,9 @@ stop_before_submit = globals().get("stop_before_submit", False)
 # working instead of dying with a NameError on the first Easy Apply dropdown.
 legally_authorized = globals().get("legally_authorized", "Yes")
 
+# "Skill: years" entries. Belongs in config/questions.py; read defensively for older configs.
+skill_years = globals().get("skill_years", [])
+
 #>
 
 
@@ -711,6 +714,24 @@ def answer_common_questions(label: str, answer: str | None) -> str | None:
 # takes the lower-cased question label and returns the configured answer, or None/"" when
 # nothing honest is configured (the caller then asks the AI or leaves the question for the user).
 
+def years_for_skill(label: str) -> str | None:
+    '''
+    Configured years for the one skill a question asks about, from `skill_years`
+    ("React: 5"). "React" also matches "React.js" / "ReactJS"; whole words only, so "Java"
+    never answers a JavaScript question. When several listed skills appear, the longest
+    name wins ("Next.js" over "JS"). `None` when no listed skill is in the label.
+    '''
+    best = None
+    for entry in skill_years:
+        skill, sep, years = str(entry).partition(":")
+        skill, years = skill.strip(), years.strip()
+        if not sep or not skill or not years: continue
+        names = {skill, skill + ".js", skill + "js"} if not skill.lower().endswith("js") else {skill}
+        if find_bad_word(label, list(names)) and (best is None or len(skill) > len(best[0])):
+            best = (skill, years)
+    return best[1] if best else None
+
+
 def select_answer(label: str, prev_answer: str, work_location: str) -> str | None:
     '''Configured answer for a dropdown question, or `None`.'''
     auth_answer = work_authorization_answer(label)
@@ -755,6 +776,8 @@ def text_answer(label: str, label_org: str, work_location: str) -> tuple[str, bo
         # total is a false answer to those - leave them for config/questions.py.
         if find_bad_word(label, total_experience_terms) and not find_bad_word(label, skill_qualifier_terms):
             answer = years_of_experience
+        else:
+            answer = years_for_skill(label) or ""
     elif label_has(label, 'phone', 'mobile'): answer = phone_number
     elif label_has(label, 'street'): answer = street
     elif label_has(label, 'email'):
@@ -1330,7 +1353,8 @@ def no_answer(label_org: str, question_type: str, job_description: str | None) -
                 return ai_answer.strip()
         except Exception as e:
             logger.warning("Failed to get AI answer! %s", e)
-    print_lg(f'No answer for "{label_org}". Leaving it - add it to config/questions.py.')
+    hint = 'add the skill to "Years per skill" (skill_years)' if label_has(label_org.lower(), 'years') and label_has(label_org.lower(), 'experience') else "add it to config/questions.py"
+    print_lg(f'No answer for "{label_org}". Leaving it - {hint}.')
     randomly_answered_questions.add((label_org, question_type))
     unanswered_questions.add(label_org)
     return ""
