@@ -27,6 +27,7 @@ import pyautogui
 csv.field_size_limit(1000000)
 
 from random import choice, shuffle
+from urllib.parse import urlparse
 from datetime import datetime
 
 from selenium.webdriver.common.by import By
@@ -34,7 +35,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, NoSuchWindowException, ElementNotInteractableException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, NoSuchWindowException, ElementNotInteractableException, WebDriverException, TimeoutException
+from selenium.webdriver.remote.webdriver import WebDriver
 
 from config.personals import *
 from config.questions import *
@@ -164,16 +166,29 @@ def fill_visible_input(by: str, value: str, text: str, time: float = 5.0) -> Non
 def is_logged_in_LN() -> bool:
     '''
     Function to check if user is logged-in in LinkedIn
-    * Returns: `True` if user is logged-in or `False` if not
+    * Returns: `True` only on positive evidence - the browser is on the LinkedIn feed
     '''
-    # The feed URL now carries query params (?trk=...), so match a prefix, not the whole URL.
-    if driver.current_url.startswith("https://www.linkedin.com/feed"): return True
-    if try_linkText(driver, "Sign in"): return False
-    # click=False: this is a check, it must not press Sign in as a side effect.
-    if try_xp(driver, sign_in_button_xpath, False):  return False
-    if try_linkText(driver, "Join now"): return False
-    print_lg("Didn't find Sign in link, so assuming user is logged in!")
-    return True
+    # Only a signed-in session lands on the feed (LinkedIn redirects /login there). Missing
+    # "Sign in" / "Join now" proves nothing: a half-loaded page, the "Welcome back" account
+    # picker and security checkpoints all lack them, and assuming True there sent the bot
+    # into job search signed out. The feed URL carries query params, so match the path.
+    url = urlparse(driver.current_url)
+    return url.netloc.endswith("linkedin.com") and url.path.startswith("/feed")
+
+
+def wait_for_login_page(timeout: float = 15) -> bool:
+    '''
+    Waits for https://www.linkedin.com/login to settle after `driver.get`
+    * Returns: `True` if it redirected to the feed (already signed in), `False` if it shows
+      the login form, or nothing conclusive appeared within `timeout` seconds
+    '''
+    def settled(d: WebDriver) -> bool:
+        return is_logged_in_LN() or pick_first_displayed(d.find_elements(By.CSS_SELECTOR, login_password_css)) is not None
+    try:
+        WebDriverWait(driver, timeout).until(settled)
+    except TimeoutException:
+        logger.warning("LinkedIn login page didn't settle within %ss (at %s). Trying to log in.", timeout, driver.current_url)
+    return is_logged_in_LN()
 
 
 def login_LN() -> None:
@@ -188,7 +203,7 @@ def login_LN() -> None:
     if username == "username@example.com" and password == "example_password":
         pyautogui.alert("User did not configure username and password in secrets.py, hence can't login automatically! Please login manually!", "Login Manually","Okay")
         print_lg("User did not configure username and password in secrets.py, hence can't login automatically! Please login manually!")
-        manual_login_retry(is_logged_in_LN, 2)
+        manual_login_retry(is_logged_in_LN, 2, interactive_session)
         return
     try:
         wait.until(EC.presence_of_element_located((By.LINK_TEXT, "Forgot password?")))
@@ -217,7 +232,7 @@ def login_LN() -> None:
         return print_lg("Login successful!")
     except Exception as e:
         logger.warning("Seems like login attempt failed! Possibly due to wrong credentials or already logged in! Try logging in manually! %s", e)
-        manual_login_retry(is_logged_in_LN, 2)
+        manual_login_retry(is_logged_in_LN, 2, interactive_session)
 #>
 
 
@@ -1507,7 +1522,10 @@ def main() -> None:
         # Login to LinkedIn
         tabs_count = len(driver.window_handles)
         driver.get("https://www.linkedin.com/login")
-        if not is_logged_in_LN(): login_LN()
+        if not wait_for_login_page(): login_LN()
+        if not is_logged_in_LN():
+            # Searching signed out only hits the authwall and times out on an empty job list.
+            raise RuntimeError(f"Not logged in to LinkedIn (browser is at {driver.current_url}). Log in, then run again.")
         
         linkedIn_tab = driver.current_window_handle
 

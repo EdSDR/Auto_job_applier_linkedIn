@@ -24,7 +24,7 @@ import pathlib
 
 import logging
 
-from time import sleep
+from time import sleep, monotonic
 from random import randint
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
@@ -276,10 +276,24 @@ def human_type(target, text: str) -> None:
         if randint(1,40) == 1: buffer(1)
 
 
-def manual_login_retry(is_logged_in: callable, limit: int = 2) -> None:
+def manual_login_retry(is_logged_in: callable, limit: int = 2, interactive: bool = True,
+                       poll_seconds: float = 5, timeout_seconds: float = 300) -> bool:
     '''
     Function to ask and validate manual login
+    * Returns `True` once `is_logged_in()` passes, `False` if a non-interactive run times out
     '''
+    if not interactive:
+        # No one can click a dialog in a panel/headless run (they're suppressed to log lines),
+        # so the old loop spun with no delay. Poll instead, and give up so the caller can stop
+        # rather than search LinkedIn signed out.
+        print_lg(f"Not logged in to LinkedIn. Log in in the opened Chrome window, waiting up to {timeout_seconds // 60:g} minutes...")
+        deadline = monotonic() + timeout_seconds
+        while not is_logged_in():
+            if monotonic() >= deadline:
+                return False
+            sleep(poll_seconds)
+        return True
+
     count = 0
     while not is_logged_in():
         from pyautogui import alert
@@ -290,7 +304,8 @@ def manual_login_retry(is_logged_in: callable, limit: int = 2) -> None:
             button = "Skip Confirmation"
             message = 'If you\'re seeing this message even after you logged in, Click "{}". Seems like auto login confirmation failed!'.format(button)
         count += 1
-        if alert(message, "Login Required", button) and count > limit: return
+        if alert(message, "Login Required", button) and count > limit: return True
+    return True
 
 
 
